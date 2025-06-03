@@ -2,28 +2,28 @@ name: Gemini PR Code Review
 
 on:
   pull_request:
-	types: [opened, reopened, synchronize] # PRが作成/更新されたときにトリガー
+    types: [opened, reopened, synchronize] # PRが作成/更新されたときにトリガー
 
 jobs:
   review:
-	runs-on: ubuntu-latest # 実行環境
+    runs-on: ubuntu-latest # 実行環境
 
-	steps:
-	- name: Checkout code
-	  uses: actions/checkout@v4 # リポジトリのコードをチェックアウト
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # リポジトリのコードをチェックアウト
 
-	- name: Set up Python
-	  uses: actions/setup-python@v5 # Python環境のセットアップ
-	  with:
-		python-version: '3.x' # 使用するPythonのバージョン
+    - name: Set up Python
+      uses: actions/setup-python@v5 # Python環境のセットアップ
+      with:
+        python-version: '3.x' # 使用するPythonのバージョン
 
-	- name: Install dependencies
-	  run: |
-		pip install requests google-generativeai PyGithub # 必要なライブラリをインストール
+    - name: Install dependencies
+      run: |
+        pip install requests google-generativeai PyGithub # 必要なライブラリをインストール
 
-	- name: Run Gemini PR Review
-	  env:
-		# ここでGitHub Secretsから環境変数としてAPIキーとGitHubトークンを渡す
-		GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-		GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-	  run: python review_pr.py # Pythonスクリプトを実行
+    - name: Run Gemini PR Review
+      env:
+        # ここでGitHub Secretsから環境変数としてAPIキーとGitHubトークンを渡す
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: python review_pr.py # Pythonスクリプトを実行
