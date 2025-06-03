@@ -5,31 +5,52 @@ import google.generativeai as genai
 
 # 環境変数からSecretsを読み込む
 GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
-GITHUB_TOKEN = os.environ.get("GEMINI_ACCESS_TOKEN")
+# ★ここを修正★: GITHUB_TOKEN の代わりに、設定したシークレット名を使う
+MY_GITHUB_PAT = os.environ.get("GEMINI_ACCESS_TOKEN") # <-- この行を修正
 
 # Gemini APIの設定
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
 
-def get_pr_diff(repo_full_name, pr_number, github_token):
+def get_pr_diff(repo_full_name, pr_number, github_token): # ★引数名も変更★
 	"""GitHub APIからPRの差分を取得する"""
 	headers = {
-		"Authorization": f"token {github_token}",
+		"Authorization": f"token {github_token}", # ★ここも修正★
 		"Accept": "application/vnd.github.v3.diff",
 	}
-	url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
-	response = requests.get(url, headers=headers)
-	response.raise_for_status() # HTTPエラーがあれば例外を発生
+	# まずPRのメタデータを取得
+	pr_url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
+	print(f"Requesting PR metadata from: {pr_url}")
+	response = requests.get(pr_url, headers=headers)
 
-	diff_url = response.json()['diff_url']
+	# 応答内容をそのまま出力して確認 (デバッグ用)
+	print(f"PR metadata response status: {response.status_code}")
+	print(f"PR metadata response text (first 500 chars): {response.text[:500]}")
+
+	response.raise_for_status()
+
+	try:
+		pr_data = response.json()
+		diff_url = pr_data['diff_url']
+	except json.JSONDecodeError as e:
+		print(f"Error decoding JSON from PR metadata response: {e}")
+		print(f"Response text was: {response.text}")
+		raise
+
+	print(f"Requesting diff from: {diff_url}")
 	diff_response = requests.get(diff_url, headers=headers)
+
+	# 応答内容をそのまま出力して確認 (デバッグ用)
+	print(f"Diff response status: {diff_response.status_code}")
+	print(f"Diff response text (first 500 chars): {diff_response.text[:500]}")
+
 	diff_response.raise_for_status()
 	return diff_response.text
 
-def post_pr_comment(repo_full_name, pr_number, comment_body, github_token):
+def post_pr_comment(repo_full_name, pr_number, comment_body, github_token): # ★引数名も変更★
 	"""GitHub APIを使ってPRにコメントを投稿する"""
 	headers = {
-		"Authorization": f"token {github_token}",
+		"Authorization": f"token {github_token}", # ★ここも修正★
 		"Accept": "application/vnd.github.v3+json",
 	}
 	url = f"https://api.github.com/repos/{repo_full_name}/issues/{pr_number}/comments"
@@ -39,9 +60,8 @@ def post_pr_comment(repo_full_name, pr_number, comment_body, github_token):
 	print(f"Comment posted successfully to PR #{pr_number}")
 
 def main():
-	# GitHub Actionsから渡される環境変数
-	repo_full_name = os.environ.get("GITHUB_REPOSITORY") # 例: octocat/Spoon-Knife
-	pr_number = os.environ.get("GITHUB_REF").split('/')[2] # 例: refs/pull/123/merge -> 123
+	repo_full_name = os.environ.get("GITHUB_REPOSITORY")
+	pr_number = os.environ.get("GITHUB_REF").split('/')[2]
 
 	if not repo_full_name or not pr_number:
 		print("Error: GITHUB_REPOSITORY or GITHUB_REF not found.")
@@ -51,18 +71,14 @@ def main():
 
 	try:
 		# 1. PR差分を取得
-		pr_diff = get_pr_diff(repo_full_name, pr_number, GITHUB_TOKEN)
+		# ★引数を修正★: MY_GITHUB_PAT を渡す
+		pr_diff = get_pr_diff(repo_full_name, pr_number, MY_GITHUB_PAT) 
 		print("PR diff fetched.")
 
-		# トークン制限に備えて差分を短縮する（オプション）
-		# 例: 最初の20000文字に制限（Gemini Proのコンテキストウィンドウは32768トークン）
-		# 実際のトークン数カウントはもっと複雑ですが、目安として。
 		if len(pr_diff) > 20000:
 			pr_diff = pr_diff[:20000] + "\n... (diff truncated due to length)"
 			print("PR diff truncated.")
 
-
-		# 2. Geminiにレビューを依頼するプロンプトを作成
 		prompt = f"""
 		You are an experienced software engineer performing a code review.
 		Review the following Pull Request (PR) diff.
@@ -80,7 +96,8 @@ def main():
 
 		# 3. 生成されたレビューコメントをPRに投稿
 		comment_body = f"## Gemini AI Code Review Assistant\n\n{review_comment}"
-		post_pr_comment(repo_full_name, pr_number, comment_body, GITHUB_TOKEN)
+		# ★引数を修正★: MY_GITHUB_PAT を渡す
+		post_pr_comment(repo_full_name, pr_number, comment_body, MY_GITHUB_PAT) 
 		print("Review comment posted.")
 
 	except requests.exceptions.RequestException as e:

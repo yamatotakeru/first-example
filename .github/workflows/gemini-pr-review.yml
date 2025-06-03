@@ -2,28 +2,32 @@ name: Gemini PR Code Review
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize] # PRが作成/更新されたときにトリガー
+    types: [opened, reopened, synchronize]
 
 jobs:
   review:
-    runs-on: ubuntu-latest # 実行環境
+    runs-on: ubuntu-latest
+
+    permissions: # ★このpermissionsブロックは重要です！★
+      pull-requests: write # PRの読み込みとコメント投稿のために必要
+      contents: read       # リポジトリのコンテンツ（差分）を読み込むために必要
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4 # リポジトリのコードをチェックアウト
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v5 # Python環境のセットアップ
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.x' # 使用するPythonのバージョン
+        python-version: '3.x'
 
     - name: Install dependencies
       run: |
-        pip install requests google-generativeai PyGithub # 必要なライブラリをインストール
+        pip install requests google-generativeai PyGithub
 
     - name: Run Gemini PR Review
       env:
-        # ここでGitHub Secretsから環境変数としてAPIキーとGitHubトークンを渡す
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }}
-      run: python review-pr.py # Pythonスクリプトを実行
+        # ★ここを修正★: シークレットの名前と環境変数名を合わせる
+        GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }} 
+      run: python review-pr.py
