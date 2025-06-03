@@ -8,6 +8,8 @@ GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
 # ★ここを修正★: GITHUB_TOKEN の代わりに、設定したシークレット名を使う
 MY_GITHUB_PAT = os.environ.get("GEMINI_ACCESS_TOKEN") # <-- この行を修正
 
+TOKEN_LEN=1000
+
 # Gemini APIの設定
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('models/gemini-1.5-pro')
@@ -88,8 +90,8 @@ def main():
 		pr_diff = get_pr_diff(repo_full_name, pr_number, MY_GITHUB_PAT) 
 		print("PR diff fetched.")
 
-		if len(pr_diff) > 20000:
-			pr_diff = pr_diff[:20000] + "\n... (diff truncated due to length)"
+		if len(pr_diff) > TOKEN_LEN:
+			pr_diff = pr_diff[:TOKEN_LEN] + "\n... (diff truncated due to length)"
 			print("PR diff truncated.")
 
 		prompt = f"""
