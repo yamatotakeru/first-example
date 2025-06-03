@@ -26,4 +26,4 @@ jobs:
         # ここでGitHub Secretsから環境変数としてAPIキーとGitHubトークンを渡す
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: python review_pr.py # Pythonスクリプトを実行
+      run: python review-pr.py # Pythonスクリプトを実行
