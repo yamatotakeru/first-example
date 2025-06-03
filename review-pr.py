@@ -5,7 +5,7 @@ import google.generativeai as genai
 
 # 環境変数からSecretsを読み込む
 GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_TOKEN = os.environ.get("GEMINI_ACCESS_TOKEN")
 
 # Gemini APIの設定
 genai.configure(api_key=GEMINI_API_KEY)
