@@ -11,6 +11,13 @@ MY_GITHUB_PAT = os.environ.get("GEMINI_ACCESS_TOKEN") # <-- この行を修正
 # Gemini APIの設定
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
+# 利用可能なモデルをリストアップしてデバッグ出力
+print("Listing available Gemini models...")
+for m in genai.list_models():
+	# generateContent をサポートするモデルのみをフィルタリング
+	if 'generateContent' in m.supported_generation_methods:
+		print(f"  - Model: {m.name}, Description: {m.description}")
+	print("Finished listing models.")
 
 def get_pr_diff(repo_full_name, pr_number, github_token):
 	"""GitHub APIからPRの差分を取得する"""
