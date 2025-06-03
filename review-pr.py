@@ -12,23 +12,25 @@ MY_GITHUB_PAT = os.environ.get("GEMINI_ACCESS_TOKEN") # <-- この行を修正
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
 
-def get_pr_diff(repo_full_name, pr_number, github_token): # ★引数名も変更★
+def get_pr_diff(repo_full_name, pr_number, github_token):
 	"""GitHub APIからPRの差分を取得する"""
 	headers = {
-		"Authorization": f"token {github_token}", # ★ここも修正★
-		"Accept": "application/vnd.github.v3.diff",
+		"Authorization": f"token {github_token}",
+		# ★ここを修正！★
+		# 最初のPRメタデータ取得時には、JSON形式をリクエストする
+		"Accept": "application/vnd.github.v3+json", 
 	}
 	# まずPRのメタデータを取得
 	pr_url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
 	print(f"Requesting PR metadata from: {pr_url}")
 	response = requests.get(pr_url, headers=headers)
-
-	# 応答内容をそのまま出力して確認 (デバッグ用)
+	
 	print(f"PR metadata response status: {response.status_code}")
-	print(f"PR metadata response text (first 500 chars): {response.text[:500]}")
-
+	# ★ここを修正！★ メタデータ応答はJSONなので、json.dumpsで整形して出力
+	print(f"PR metadata response text (first 500 chars): {json.dumps(response.json(), indent=2)[:500]}") 
+	
 	response.raise_for_status()
-
+	
 	try:
 		pr_data = response.json()
 		diff_url = pr_data['diff_url']
@@ -36,14 +38,18 @@ def get_pr_diff(repo_full_name, pr_number, github_token): # ★引数名も変�
 		print(f"Error decoding JSON from PR metadata response: {e}")
 		print(f"Response text was: {response.text}")
 		raise
-
+	
 	print(f"Requesting diff from: {diff_url}")
-	diff_response = requests.get(diff_url, headers=headers)
-
-	# 応答内容をそのまま出力して確認 (デバッグ用)
+	# ★ここを修正！★ diff_urlにアクセスする際は、再度diff形式をリクエストするAcceptヘッダーを使う
+	diff_headers = {
+		"Authorization": f"token {github_token}",
+		"Accept": "application/vnd.github.v3.diff",
+	}
+	diff_response = requests.get(diff_url, headers=diff_headers)
+	
 	print(f"Diff response status: {diff_response.status_code}")
 	print(f"Diff response text (first 500 chars): {diff_response.text[:500]}")
-
+	
 	diff_response.raise_for_status()
 	return diff_response.text
 
