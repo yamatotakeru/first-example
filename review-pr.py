@@ -10,7 +10,7 @@ MY_GITHUB_PAT = os.environ.get("GEMINI_ACCESS_TOKEN") # <-- この行を修正
 
 # Gemini APIの設定
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('models/gemini-2.5-pro')
+model = genai.GenerativeModel('models/gemini-1.5-pro')
 # 利用可能なモデルをリストアップしてデバッグ出力
 print("Listing available Gemini models...")
 # for m in genai.list_models():
