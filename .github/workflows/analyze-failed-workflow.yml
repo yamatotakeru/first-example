@@ -47,8 +47,12 @@ jobs:
         # Gemini APIキーとGitHub PATのシークレット
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }}
+        
+        GITHUB_EVENT_PAYLOAD_FILE: github_event_payload.json
       run: |
-        export GITHUB_EVENT_PAYLOAD_JSON="${{ toJSON(github.event) }}"
+        echo "${{ toJSON(github.event) }}" > ${{ env.GITHUB_EVENT_PAYLOAD_FILE }}
+        echo "GitHub event payload written to ${{ env.GITHUB_EVENT_PAYLOAD_FILE }}"
+        
         echo "ワークフロー実行ID ${{ github.event.workflow_run.id }} の失敗したジョブIDを探しています。"
         
         # GitHub APIを呼び出して、失敗したワークフロー実行内のジョブデータを取得
