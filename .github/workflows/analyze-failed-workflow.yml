@@ -92,4 +92,4 @@ jobs:
         echo "Detected failed job ID: ${JOB_ID_TO_ANALYZE} for PR #${PR_NUMBER}"
         
         # Pythonスクリプトを実行
-        python review_pr.py "${PR_NUMBER}" "${RUN_ID}" "${JOB_ID_TO_ANALYZE}" # スクリプトに引数を渡す
+        python review-pr.py "${PR_NUMBER}" "${RUN_ID}" "${JOB_ID_TO_ANALYZE}" # スクリプトに引数を渡す
