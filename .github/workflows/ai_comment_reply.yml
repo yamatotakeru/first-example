@@ -8,7 +8,8 @@ on:
 jobs:
   reply_to_comment:
     # コメント投稿者がボットの場合、無限ループを防ぐためにワークフローを実行しない
-    if: ${{ github.event.sender.type != 'Bot' }}
+	if: contains(github.event.comment.body, '@yamatotakeru') && github.event.sender.type != 'Bot'
+    # if: ${{ github.event.sender.type != 'Bot' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
