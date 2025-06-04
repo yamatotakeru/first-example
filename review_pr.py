@@ -6,68 +6,36 @@ from google.api_core.exceptions import ResourceExhausted, GoogleAPICallError
 
 # 環境変数からSecretsを読み込む
 GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
-# ★ここを修正★: GITHUB_TOKEN の代わりに、設定したシークレット名を使う
-MY_GITHUB_PAT = os.environ.get("GEMINI_ACCESS_TOKEN") # <-- この行を修正
+# GitHubのPersonal Access Token (PAT)
+# YAMLファイルで設定した secrets.GEMINI_ACCESS_TOKEN を読み込む
+GITHUB_TOKEN = os.environ.get("GEMINI_ACCESS_TOKEN")
 
-TOKEN_LEN=10000
+# レビュー対象とする差分の最大文字数
+TOKEN_LEN = 10000
 
 # Gemini APIの設定
 genai.configure(api_key=GEMINI_API_KEY)
-# model = genai.GenerativeModel('models/gemini-1.5-pro')
 model = genai.GenerativeModel('models/gemini-1.5-flash')
-# 利用可能なモデルをリストアップしてデバッグ出力
-print("Listing available Gemini models...")
-# for m in genai.list_models():
-# 	# generateContent をサポートするモデルのみをフィルタリング
-# 	if 'generateContent' in m.supported_generation_methods:
-# 		print(f"  - Model: {m.name}, Description: {m.description}")
-# 	print("Finished listing models.")
 
 def get_pr_diff(repo_full_name, pr_number, github_token):
 	"""GitHub APIからPRの差分を取得する"""
 	headers = {
 		"Authorization": f"token {github_token}",
-		# ★ここを修正！★
-		# 最初のPRメタデータ取得時には、JSON形式をリクエストする
-		"Accept": "application/vnd.github.v3+json", 
+		"Accept": "application/vnd.github.v3.diff", # diff形式を直接リクエスト
 	}
-	# まずPRのメタデータを取得
-	pr_url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
-	print(f"Requesting PR metadata from: {pr_url}")
-	response = requests.get(pr_url, headers=headers)
+	url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
 	
-	print(f"PR metadata response status: {response.status_code}")
-	# ★ここを修正！★ メタデータ応答はJSONなので、json.dumpsで整形して出力
-	print(f"PR metadata response text (first 500 chars): {json.dumps(response.json(), indent=2)[:500]}") 
-	
-	response.raise_for_status()
-	
-	try:
-		pr_data = response.json()
-		diff_url = pr_data['diff_url']
-	except json.JSONDecodeError as e:
-		print(f"Error decoding JSON from PR metadata response: {e}")
-		print(f"Response text was: {response.text}")
-		raise
-	
-	print(f"Requesting diff from: {diff_url}")
-	# ★ここを修正！★ diff_urlにアクセスする際は、再度diff形式をリクエストするAcceptヘッダーを使う
-	diff_headers = {
-		"Authorization": f"token {github_token}",
-		"Accept": "application/vnd.github.v3.diff",
-	}
-	diff_response = requests.get(diff_url, headers=diff_headers)
+	print(f"Requesting diff from: {url}")
+	diff_response = requests.get(url, headers=headers)
 	
 	print(f"Diff response status: {diff_response.status_code}")
-	print(f"Diff response text (first 500 chars): {diff_response.text[:500]}")
-	
 	diff_response.raise_for_status()
 	return diff_response.text
 
-def post_pr_comment(repo_full_name, pr_number, comment_body, github_token): # ★引数名も変更★
+def post_pr_comment(repo_full_name, pr_number, comment_body, github_token):
 	"""GitHub APIを使ってPRにコメントを投稿する"""
 	headers = {
-		"Authorization": f"token {github_token}", # ★ここも修正★
+		"Authorization": f"token {github_token}",
 		"Accept": "application/vnd.github.v3+json",
 	}
 	url = f"https://api.github.com/repos/{repo_full_name}/issues/{pr_number}/comments"
@@ -80,64 +48,80 @@ def main():
 	repo_full_name = os.environ.get("GITHUB_REPOSITORY")
 	pr_number = os.environ.get("GITHUB_REF").split('/')[2]
 
-	if not repo_full_name or not pr_number:
-		print("Error: GITHUB_REPOSITORY or GITHUB_REF not found.")
+	if not all([repo_full_name, pr_number, GITHUB_TOKEN, GEMINI_API_KEY]):
+		print("Error: Required environment variables are missing.")
 		exit(1)
 
 	print(f"Processing PR #{pr_number} in {repo_full_name}...")
 
 	try:
 		# 1. PR差分を取得
-		# ★引数を修正★: MY_GITHUB_PAT を渡す
-		pr_diff = get_pr_diff(repo_full_name, pr_number, MY_GITHUB_PAT) 
+		pr_diff = get_pr_diff(repo_full_name, pr_number, GITHUB_TOKEN)
 		print("PR diff fetched.")
 
+		if not pr_diff.strip():
+			print("Diff is empty. No review needed.")
+			# 差分が空の場合、ポジティブなコメントを残して終了
+			comment_body = "🤖 **Gemini AI Review**: 差分がありませんでした。レビューは不要です。お疲れ様です！"
+			post_pr_comment(repo_full_name, pr_number, comment_body, GITHUB_TOKEN)
+			exit(0)
+
 		if len(pr_diff) > TOKEN_LEN:
-			pr_diff = pr_diff[:TOKEN_LEN] + "\n... (diff truncated due to length)"
+			pr_diff = pr_diff[:TOKEN_LEN] + "\n... (差分が長すぎるため省略されました)"
 			print("PR diff truncated.")
 
+		# ### ★変更点 1: プロンプトを日本語化し、「指摘なし」の場合のルールを追加 ###
 		prompt = f"""
-		You are an experienced software engineer performing a code review.
-		Review the following Pull Request (PR) diff.
-		Identify potential bugs, areas for improvement (e.g., performance, readability), security concerns, and suggest additional test cases if necessary.
-		Provide your feedback in a concise, bulleted list.
+		あなたは経験豊富なソフトウェアエンジニアとして、コードレビューを実行してください。
+		以下のPull Requestの差分を分析し、次の観点から具体的な改善点を指摘してください。
 
-		--- PR Diff ---
+		- 潜在的なバグやエラー
+		- パフォーマンスの改善点
+		- 可読性や保守性の向上
+		- セキュリティ上の懸念
+		- より良いプラクティスや設計への提案
+
+		フィードバックは、簡潔な箇条書きのマークダウン形式で、日本語で記述してください。
+		
+		**【最重要ルール】**
+		もしレビューして何も懸念事項や改善提案がない場合は、他の言葉は一切含めず、 `LGTM` という文字列だけを返してください。
+
+		--- PRの差分 ---
 		{pr_diff}
-		--- PR Diff End ---
+		--- 差分の終わり ---
 		"""
+
 		print("Sending diff to Gemini for review...")
 		response = model.generate_content(prompt)
-		review_comment = response.text
+		review_text = response.text.strip()
 		print("Review generated by Gemini.")
 
-		# 3. 生成されたレビューコメントをPRに投稿
-		comment_body = f"## Gemini AI Code Review Assistant\n\n{review_comment}"
-		# ★引数を修正★: MY_GITHUB_PAT を渡す
-		post_pr_comment(repo_full_name, pr_number, comment_body, MY_GITHUB_PAT) 
+		# ### ★変更点 2: Geminiの返信内容に応じて投稿コメントを分岐 ###
+		if review_text == "LGTM":
+			# Geminiが「問題なし」と判断した場合のシンプルなコメント
+			print("No issues found. Posting a simple LGTM comment.")
+			comment_body = "🤖 **Gemini AI Review**: LGTM! コードに問題は見つかりませんでした。素晴らしいお仕事です！ 👍"
+		else:
+			# 具体的な指摘があった場合の通常のコメント
+			print("Issues found. Posting the detailed review.")
+			comment_body = f"## 🤖 Gemini AI コードレビュー\n\n{review_text}"
+		
+		post_pr_comment(repo_full_name, pr_number, comment_body, GITHUB_TOKEN)
 		print("Review comment posted.")
 
-	except ResourceExhausted as e:
-		print(f"Gemini API Error: Quota Exceeded - {e}")
-		print("::error::Gemini API Error: Quota Exceeded. Please check your usage.")
-		exit(1)
-	except GoogleAPICallError as e: # その他の一般的なGemini APIエラー
-		print(f"Gemini API Error (Generic): {e}")
-		print("::error::Gemini API Error: " + str(e))
+	except (ResourceExhausted, GoogleAPICallError) as e:
+		print(f"Gemini API Error: {e}")
+		print(f"::error::Gemini API Error: {e}")
 		exit(1)
 	except requests.exceptions.RequestException as e:
 		print(f"GitHub API Error: {e}")
-		print("::error::GitHub API Error: " + str(e))
-		exit(1)
-	except genai.types.BlockedPromptException as e: # BlockedPromptExceptionはそのまま
-		print(f"Gemini API Error: プロンプトがブロックされました - {e}")
-		print("::error::Gemini API Error: Prompt Blocked - " + str(e))
+		print(f"::error::GitHub API Error: {e}")
 		exit(1)
 	except Exception as e:
-		print(f"予期せぬエラーが発生しました: {e}")
+		print(f"An unexpected error occurred: {e}")
 		import traceback
 		traceback.print_exc()
-		print("::error::An unexpected error occurred during review process.")
+		print(f"::error::An unexpected error occurred: {e}")
 		exit(1)
 
 if __name__ == "__main__":
