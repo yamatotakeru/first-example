@@ -51,6 +51,7 @@ def main():
 	
 	# 修正後
 	pr_number = os.environ.get("PR_NUMBER")
+	print("伸びしろですねぇ")
 	
 	if not all([repo_full_name, pr_number, GITHUB_TOKEN, GEMINI_API_KEY]):
 		print("Error: Required environment variables are missing.")
