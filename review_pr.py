@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted, GoogleAPICallError
 
 # 環境変数からSecretsを読み込む
 GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
@@ -116,14 +117,27 @@ def main():
 		post_pr_comment(repo_full_name, pr_number, comment_body, MY_GITHUB_PAT) 
 		print("Review comment posted.")
 
+	except ResourceExhausted as e:
+		print(f"Gemini API Error: Quota Exceeded - {e}")
+		print("::error::Gemini API Error: Quota Exceeded. Please check your usage.")
+		exit(1)
+	except GoogleAPICallError as e: # その他の一般的なGemini APIエラー
+		print(f"Gemini API Error (Generic): {e}")
+		print("::error::Gemini API Error: " + str(e))
+		exit(1)
 	except requests.exceptions.RequestException as e:
 		print(f"GitHub API Error: {e}")
+		print("::error::GitHub API Error: " + str(e))
 		exit(1)
-	except genai.types.BlockedPromptException as e:
-		print(f"Gemini API Error: Prompt was blocked - {e}")
+	except genai.types.BlockedPromptException as e: # BlockedPromptExceptionはそのまま
+		print(f"Gemini API Error: プロンプトがブロックされました - {e}")
+		print("::error::Gemini API Error: Prompt Blocked - " + str(e))
 		exit(1)
 	except Exception as e:
-		print(f"An unexpected error occurred: {e}")
+		print(f"予期せぬエラーが発生しました: {e}")
+		import traceback
+		traceback.print_exc()
+		print("::error::An unexpected error occurred during review process.")
 		exit(1)
 
 if __name__ == "__main__":
