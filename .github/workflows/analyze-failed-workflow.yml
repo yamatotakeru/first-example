@@ -1,20 +1,28 @@
-name: AI Workflow Failure Analyzer
+name: AI Workflow Failure Analyzer # このワークフロー自体の名前
 
 on:
   workflow_run:
-    workflows: ["Gemini PR Code Review"] # ★監視したいワークフロー名を設定
+    # 監視したいワークフローの名前をここで指定します。
+    # 例: workflows: ["Build and Test", "Deploy to Production"]
+    # 複数のワークフローを監視できます。全てを監視したい場合はこの 'workflows' キーを省略します (推奨されません)。
+    workflows: ["Gemini PR Code Review"] # <-- ★ここに、監視したいワークフロー名 (例: Gemini PR Code Review) を記述★
     types:
-      - completed
+      - completed # 監視対象のワークフローが完了したときにトリガー
 
 jobs:
   analyze_failure:
-    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    # 監視対象のワークフローの実行結果が 'failure' の場合のみ、このジョブを実行
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }} 
     runs-on: ubuntu-latest
-
+    
+    # 必要な権限:
+    #   - contents: read (このリポジトリのスクリプトをチェックアウトするため)
+    #   - issues: write (Issueを作成/コメントするため)
+    #   - actions: read (失敗したワークフロー実行のログを読み取るため)
     permissions:
       contents: read
-      issues: write
-      actions: read
+      issues: write 
+      actions: read 
 
     steps:
     - name: コードのチェックアウト
@@ -28,47 +36,40 @@ jobs:
     - name: 依存関係のインストール
       run: |
         pip install requests google-generativeai PyGithub
-        pip install jq
 
     - name: 失敗したジョブの詳細を取得し、分析を実行
-      id: analyze_step # ★このステップにIDを追加★
       env:
-        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }}
-        # ★ファイルに書き出す代わりに、必要な情報を個別に環境変数として渡す★
+        # 失敗したワークフロー実行のID、名前、URLをPythonスクリプトに環境変数として渡す
         FAILED_WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
         FAILED_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
         FAILED_WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}
-        # GitHub Eventの pull_requests 配列も直接渡す (JSON文字列として)
-        # これがエラーの原因だったので、これをシェルが直接処理しないようにする
-        GITHUB_PULL_REQUESTS_JSON: ${{ toJSON(github.event.workflow_run.pull_requests) }} 
-
+        
+        # Gemini APIキーとGitHub PATのシークレット
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }}
       run: |
-        set -e
-
-        echo "ワークフロー実行ID ${{ env.FAILED_WORKFLOW_RUN_ID }} の失敗したジョブIDを探しています。"
-
+        echo "ワークフロー実行ID ${{ github.event.workflow_run.id }} の失敗したジョブIDを探しています。"
+        
+        # GitHub APIを呼び出して、失敗したワークフロー実行内のジョブデータを取得
+        # secrets.GITHUB_TOKEN (自動生成されるトークン) を認証に使用
         JOB_DATA=$(curl -s \
                      -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                      -H "Accept: application/vnd.github.v3+json" \
-                     "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ env.FAILED_WORKFLOW_RUN_ID }}/jobs")
-
+                     "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs")
+        
+        # jq を使って、JSONから結論が 'failure' のジョブのIDと名前を取得（最初のもの）
         FAILED_JOB_ID=$(echo "$JOB_DATA" | jq -r '.jobs[] | select(.conclusion == "failure") | .id' | head -n 1)
         FAILED_JOB_NAME=$(echo "$JOB_DATA" | jq -r '.jobs[] | select(.conclusion == "failure") | .name' | head -n 1)
-
+        
         if [ -z "$FAILED_JOB_ID" ]; then
-          echo "分析対象の失敗したジョブが見つかりませんでした。"
-          exit 0
+          echo "分析対象の失敗したジョブが見つかりませんでした。ワークフローがジョブ完了前に失敗したか、APIレート制限が原因かもしれません。"
+          exit 0 # ジョブが見つからない場合は正常終了
         fi
-
+        
         echo "失敗したジョブID: $FAILED_JOB_ID (名前: $FAILED_JOB_NAME) を検出しました。"
         
-        # ★ここから修正★ Pythonスクリプトに引数として直接渡す
-        # 環境変数として渡すと、シェルがJSONを扱ってエラーになる可能性があったため
-        python analyze_log.py \
-          "${{ env.FAILED_WORKFLOW_NAME }}" \
-          "${{ env.FAILED_WORKFLOW_RUN_ID }}" \
-          "${{ env.FAILED_JOB_ID }}" \
-          "${{ env.FAILED_JOB_NAME }}" \
-          "${{ env.FAILED_WORKFLOW_RUN_URL }}" \
-          "${{ env.GITHUB_PULL_REQUESTS_JSON }}" # PR情報も文字列として渡す
+        # Pythonスクリプトを実行し、特定したジョブIDと名前を環境変数として渡す
+        export FAILED_JOB_ID="$FAILED_JOB_ID"
+        export FAILED_JOB_NAME="$FAILED_JOB_NAME"
+
+        python analyze_log.py
