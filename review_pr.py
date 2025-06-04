@@ -12,7 +12,8 @@ TOKEN_LEN=1000
 
 # Gemini APIの設定
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('models/gemini-1.5-pro')
+# model = genai.GenerativeModel('models/gemini-1.5-pro')
+model = genai.GenerativeModel('models/gemini-1.5-flash')
 # 利用可能なモデルをリストアップしてデバッグ出力
 print("Listing available Gemini models...")
 # for m in genai.list_models():
