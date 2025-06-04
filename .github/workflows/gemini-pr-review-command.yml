@@ -50,4 +50,4 @@ jobs:
           PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           # Pythonスクリプト側でPR番号の取得方法を修正する必要がある
-          python review_pr.pys
+          python review_pr.py
