@@ -9,12 +9,12 @@ GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
 # ★ここを修正★: GITHUB_TOKEN の代わりに、設定したシークレット名を使う
 MY_GITHUB_PAT = os.environ.get("GEMINI_ACCESS_TOKEN") # <-- この行を修正
 
-TOKEN_LEN=1000
+TOKEN_LEN=10000
 
 # Gemini APIの設定
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('models/gemini-1.5-pro')
-# model = genai.GenerativeModel('models/gemini-1.5-flash')
+# model = genai.GenerativeModel('models/gemini-1.5-pro')
+model = genai.GenerativeModel('models/gemini-1.5-flash')
 # 利用可能なモデルをリストアップしてデバッグ出力
 print("Listing available Gemini models...")
 # for m in genai.list_models():
