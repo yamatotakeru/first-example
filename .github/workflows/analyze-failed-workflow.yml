@@ -1,28 +1,21 @@
-name: AI Workflow Failure Analyzer # このワークフロー自体の名前
+name: AI Workflow Failure Analyzer
 
 on:
   workflow_run:
-    # 監視したいワークフローの名前をここで指定します。
-    # 例: workflows: ["Build and Test", "Deploy to Production"]
-    # 複数のワークフローを監視できます。全てを監視したい場合はこの 'workflows' キーを省略します (推奨されません)。
-    workflows: ["Gemini PR Code Review"] # <-- ★ここに、監視したいワークフロー名 (例: Gemini PR Code Review) を記述★
+    workflows: ["Gemini PR Code Review"] # <-- ★ここに、監視したいワークフロー名 を記述★
     types:
-      - completed # 監視対象のワークフローが完了したときにトリガー
+      - completed
 
 jobs:
   analyze_failure:
-    # 監視対象のワークフローの実行結果が 'failure' の場合のみ、このジョブを実行
-    if: ${{ github.event.workflow_run.conclusion == 'failure' }} 
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     
-    # 必要な権限:
-    #   - contents: read (このリポジトリのスクリプトをチェックアウトするため)
-    #   - issues: write (Issueを作成/コメントするため)
-    #   - actions: read (失敗したワークフロー実行のログを読み取るため)
     permissions:
       contents: read
-      issues: write 
-      actions: read 
+      issues: write
+      pull-requests: write # ★ PRへの書き込み権限を追加
+      actions: read
 
     steps:
     - name: コードのチェックアウト
@@ -35,40 +28,44 @@ jobs:
 
     - name: 依存関係のインストール
       run: |
-        pip install requests google-generativeai PyGithub
+        pip install requests google-generativeai
 
     - name: 失敗したジョブの詳細を取得し、分析を実行
       env:
-        # 失敗したワークフロー実行のID、名前、URLをPythonスクリプトに環境変数として渡す
+        # ワークフローの基本情報をPythonスクリプトに渡す
         FAILED_WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
         FAILED_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
         FAILED_WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}
         
-        # Gemini APIキーとGitHub PATのシークレット
+        # ★ 関連するPR番号をPythonスクリプトに渡す (PRがない場合は空になる)
+        PULL_REQUEST_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        
+        # シークレット
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }}
+        # GITHUB_TOKENは自動的に付与されるため、明示的にsecretsから渡す必要はない
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       run: |
-        echo "ワークフロー実行ID ${{ github.event.workflow_run.id }} の失敗したジョブIDを探しています。"
+        echo "ワークフロー実行ID ${{ env.FAILED_WORKFLOW_RUN_ID }} の失敗したジョブIDを探しています。"
         
-        # GitHub APIを呼び出して、失敗したワークフロー実行内のジョブデータを取得
-        # secrets.GITHUB_TOKEN (自動生成されるトークン) を認証に使用
-        JOB_DATA=$(curl -s \
-                     -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                     -H "Accept: application/vnd.github.v3+json" \
-                     "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs")
+        # GitHub APIを呼び出してジョブデータを取得
+        JOB_DATA=$(curl -s -H "Authorization: token ${{ env.GITHUB_TOKEN }}" \
+                         -H "Accept: application/vnd.github.v3+json" \
+                         "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ env.FAILED_WORKFLOW_RUN_ID }}/jobs")
         
-        # jq を使って、JSONから結論が 'failure' のジョブのIDと名前を取得（最初のもの）
+        # jq を使って失敗したジョブのIDと名前を取得
         FAILED_JOB_ID=$(echo "$JOB_DATA" | jq -r '.jobs[] | select(.conclusion == "failure") | .id' | head -n 1)
         FAILED_JOB_NAME=$(echo "$JOB_DATA" | jq -r '.jobs[] | select(.conclusion == "failure") | .name' | head -n 1)
         
         if [ -z "$FAILED_JOB_ID" ]; then
-          echo "分析対象の失敗したジョブが見つかりませんでした。ワークフローがジョブ完了前に失敗したか、APIレート制限が原因かもしれません。"
-          exit 0 # ジョブが見つからない場合は正常終了
+          echo "分析対象の失敗したジョブが見つかりませんでした。"
+          exit 0
         fi
         
         echo "失敗したジョブID: $FAILED_JOB_ID (名前: $FAILED_JOB_NAME) を検出しました。"
         
-        # Pythonスクリプトを実行し、特定したジョブIDと名前を環境変数として渡す
+        # Pythonスクリプトに環境変数を渡して実行
+        # (envブロックで定義した変数は自動で引き継がれる)
         export FAILED_JOB_ID="$FAILED_JOB_ID"
         export FAILED_JOB_NAME="$FAILED_JOB_NAME"
 
