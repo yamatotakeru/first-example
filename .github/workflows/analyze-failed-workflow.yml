@@ -1,0 +1,95 @@
+name: Analyze Failed PR Workflow
+
+on:
+  workflow_run:
+    # どのワークフローの失敗を監視するかをここで指定
+    # 例: 'Gemini PR Code Review' という名前のワークフローが失敗した場合
+    workflows: ["Gemini PR Code Review"] 
+    types:
+      - completed # ワークフローが完了したときにトリガー
+
+jobs:
+  analyze_failure:
+    # workflow_runトリガーの場合、元のワークフローの結果をチェック
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }} 
+    runs-on: ubuntu-latest
+    
+    # ログを読み取り、PRにコメントを書き込む権限が必要
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write # PRへのコメント投稿のため
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        pip install requests google-generativeai PyGithub
+
+    - name: Get failed job details and run analysis
+      env:
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }}
+        # エラーになったワークフロー実行のIDを環境変数として渡す
+        FAILED_WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+        # エラーになったジョブのIDを特定する必要があるため、
+        # ここではworkflow_runのペイロードから抽出を試みる
+        # 注: workflow_runイベントペイロードから直接ジョブIDを抽出するのは複雑なため、
+        #     一旦ダミーを渡し、スクリプト内で動的に探すか、
+        #     最もエラーになりやすいジョブ名を仮定する。
+        #     ここでは簡単な例として、ペイロードからジョブIDを直接渡すのが難しいため、
+        #     スクリプト内でjob_idを特定するロジック（get_job_logの変更）が必要。
+        #     もっと簡単な方法として、workflow_runイベントには直接job_idが含まれないため、
+        #     いったんこのワークフローは単に「エラーになったrunのID」のみを渡し、
+        #     スクリプト内でそのrunに含まれる「失敗したジョブ」を探すように修正します。
+      run: |
+        # ここで失敗したジョブのIDを特定するロジックをPythonスクリプトに追加する必要がある
+        # または、常に特定のジョブ名（例: 'review'）が失敗すると仮定してそのログを取得する
+        # 最もシンプルなのは、失敗したワークフローの'review'ジョブのログを取得すること。
+        # ただし、job_idはrun_idからAPIで取得する必要がある。
+
+        # Pythonスクリプトに渡すためのjob_idを特定する
+        # GITHUB_TOKENはここで提供されるものを使う
+        JOB_ID_TO_ANALYZE=""
+        RUN_ID="${{ github.event.workflow_run.id }}"
+        REPO_FULL_NAME="${{ github.repository }}"
+        
+        # GitHub APIでジョブリストを取得
+        response=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                     -H "Accept: application/vnd.github.v3+json" \
+                     "https://api.github.com/repos/${REPO_FULL_NAME}/actions/runs/${RUN_ID}/jobs")
+        
+        # 失敗したジョブを特定 (statusが'failure'のもの)
+        JOB_ID_TO_ANALYZE=$(echo "$response" | jq -r '.jobs[] | select(.status == "completed" and .conclusion == "failure") | .id' | head -n 1)
+
+        if [ -z "$JOB_ID_TO_ANALYZE" ]; then
+          echo "No failed job found in workflow run ${RUN_ID} to analyze."
+          exit 0
+        fi
+
+        # PR番号を取得 (workflow_runイベントから)
+        PR_NUMBER=""
+        PR_URLS=$(echo "$response" | jq -r '.jobs[] | select(.id == '$JOB_ID_TO_ANALYZE') | .pull_requests[] | .number')
+        if [ -n "$PR_URLS" ]; then
+          PR_NUMBER=$(echo "$PR_URLS" | head -n 1) # 複数のPRがある場合は最初のものを採用
+        else
+          # workflow_runイベントのペイロードからPR番号を直接取得を試みる
+          # これは少し複雑になるため、今回は上記に任せるか、PR以外にも対応するなら別のロジック
+          # GITHUB_EVENT_PATHをパースする方が確実だが、一旦はjobsからの取得に頼る
+          # もしPRに紐付かないワークフローの場合、この部分で失敗してコメントできない。
+          # その場合は、このワークフローはPRへのコメントをスキップする。
+          echo "Could not determine PR number for job ID ${JOB_ID_TO_ANALYZE}. Skipping PR comment."
+          exit 0 # PR番号が見つからない場合は正常終了し、コメント投稿はしない
+        fi
+        
+        echo "Detected failed job ID: ${JOB_ID_TO_ANALYZE} for PR #${PR_NUMBER}"
+        
+        # Pythonスクリプトを実行
+        python review_pr.py "${PR_NUMBER}" "${RUN_ID}" "${JOB_ID_TO_ANALYZE}" # スクリプトに引数を渡す
