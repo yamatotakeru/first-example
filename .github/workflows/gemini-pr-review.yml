@@ -1,0 +1,41 @@
+name: Gemini PR Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    permissions: # ★このpermissionsブロックは重要です！★
+      pull-requests: write # PRの読み込みとコメント投稿のために必要
+      contents: read       # リポジトリのコンテンツ（差分）を読み込むために必要
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        pip install requests google-generativeai PyGithub
+
+    - name: Run Gemini PR Review
+      env:
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        # ★ここを修正★: シークレットの名前と環境変数名を合わせる
+        GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }} 
+      run: |
+        set -e # これにより、以降のコマンドでエラーが発生したらすぐにスクリプト全体が終了します。
+        
+        # Pythonスクリプトを実行
+        python review_pr.py
+        
+        # もしPythonスクリプトが非ゼロで終了した場合、
+        # 'set -e' のおかげで、このシェルスクリプト全体も非ゼロで終了し、
+        # GitHub Actionsのステップが失敗とマークされます。
