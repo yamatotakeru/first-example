@@ -68,15 +68,13 @@ def main():
 	# workflow_run イベントのペイロードからPR番号を取得する
 	# これはanalyze-failed-workflow.ymlの呼び出し元（event.workflow_run.pull_requests）から取得されることを想定
 	pr_number = None
-	event_payload_file = os.environ.get("GITHUB_EVENT_PAYLOAD_FILE")
-	print(f"DEBUG: GITHUB_EVENT_PAYLOAD_FILE: {event_payload_file}")
-	if event_payload_file and os.path.exists(event_payload_file):
+	event_payload_str = os.environ.get("GITHUB_EVENT_PAYLOAD") # GITHUB_EVENT_PATH の内容
+	print(f"DEBUG: GITHUB_EVENT_PAYLOAD environment variable length: {len(event_payload_str) if event_payload_str else 0}")
+	if event_payload_str:
 		try:
-			with open(event_payload_file, 'r', encoding='utf-8') as f:
-				event_payload = json.load(f)
-			print("DEBUG: GitHub event payload successfully loaded from file.")
+			event_payload = json.loads(event_payload_str)
+			print("DEBUG: GITHUB_EVENT_PAYLOAD successfully decoded as JSON.")
 			
-			# workflow_run.pull_requests のパスは同じ
 			workflow_run_data = event_payload.get('workflow_run', {})
 			print(f"DEBUG: 'workflow_run' data type: {type(workflow_run_data)}")
 			
@@ -91,12 +89,10 @@ def main():
 				print("DEBUG: 'pull_requests' list is empty or 'number' not found in first item.")
 	
 		except json.JSONDecodeError as e:
-			print(f"DEBUG: Could not decode JSON from file '{event_payload_file}': {e}")
-		except FileNotFoundError:
-			print(f"DEBUG: File not found: '{event_payload_file}'")
+			print(f"DEBUG: Could not decode GITHUB_EVENT_PAYLOAD as JSON: {e}")
+			print(f"DEBUG: Partial payload string (first 500 chars): {event_payload_str[:500]}")
 	else:
-		print("DEBUG: GITHUB_EVENT_PAYLOAD_FILE environment variable is empty or file does not exist.")
-	
+		print("DEBUG: GITHUB_EVENT_PAYLOAD environment variable is empty or not set.")
 	# event_payload_str = os.environ.get("GITHUB_EVENT_PAYLOAD") # GITHUB_EVENT_PATH の内容
 	# if event_payload_str:
 	# 	try:
