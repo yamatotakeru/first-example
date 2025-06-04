@@ -30,4 +30,13 @@ jobs:
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         # ★ここを修正★: シークレットの名前と環境変数名を合わせる
         GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }} 
-      run: python review-pr.py
+      run: |
+        # Pythonスクリプトを実行し、その終了コードを変数に格納
+        python review_pr.py
+        
+        # 直前のコマンドの終了コード ($? または %errorlevel%) を確認
+        # 非ゼロであれば、GitHub Actionsのステップを明示的に失敗させる
+        if [ $? -ne 0 ]; then
+          echo "::error::Python script exited with an error. Marking job as failed."
+          exit 1
+        fi
