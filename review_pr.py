@@ -46,8 +46,12 @@ def post_pr_comment(repo_full_name, pr_number, comment_body, github_token):
 
 def main():
 	repo_full_name = os.environ.get("GITHUB_REPOSITORY")
-	pr_number = os.environ.get("GITHUB_REF").split('/')[2]
-
+	# 修正前
+	# pr_number = os.environ.get("GITHUB_REF").split('/')[2]
+	
+	# 修正後
+	pr_number = os.environ.get("PR_NUMBER")
+	
 	if not all([repo_full_name, pr_number, GITHUB_TOKEN, GEMINI_API_KEY]):
 		print("Error: Required environment variables are missing.")
 		exit(1)
