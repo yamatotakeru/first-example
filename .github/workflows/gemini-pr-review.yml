@@ -1,6 +1,7 @@
-name: Gemini PR Code Review
+name: Gemini PR Code Review(d)
 
-on:
+# 手動化して一時的に無効状態にする
+on: [workflow_dispatch]
   pull_request:
     types: [opened, reopened, synchronize]
 

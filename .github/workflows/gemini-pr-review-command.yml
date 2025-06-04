@@ -1,0 +1,53 @@
+name: Gemini PR Code Review
+
+# ★変更点1: トリガーをコメント投稿に変更
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    # ★変更点2: PRに対するコメントで、内容が '/review' の場合のみ実行
+    if: github.event.issue.pull_request && github.event.comment.body == '/review'
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Acknowledge command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+      
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          # PRの最新コードを取得
+          ref: refs/pull/${{ github.event.issue.number }}/head
+
+      # ... (Pythonのセットアップと依存関係のインストールは同じ) ...
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests google-generativeai
+
+      - name: Run Gemini PR Review
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_ACCESS_TOKEN: ${{ secrets.GEMINI_ACCESS_TOKEN }}
+          # ★変更点3: PythonスクリプトにPR番号を渡す
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Pythonスクリプト側でPR番号の取得方法を修正する必要がある
+          python review_pr.pys
